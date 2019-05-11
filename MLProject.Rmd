@@ -1,0 +1,118 @@
+---
+title: "Preciction Assignment: Activity Recognition"
+author: "DDThomas"
+output:
+  pdf_document: default
+  html_document:
+    keep_md: yes
+---
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).  
+
+Steps for this predictive analysis:
+
+1. Download and Split Data
+2. Exploratory Data Analysis
+3. Prediction Model Comparison
+4. Test Set Performance
+
+## Getting the Data Ready 
+
+Both training and testing datasets are downloaded. The training dataset is then broken down into its own training and testing sets. 
+
+```{r DataLoading, message = FALSE}
+library(caret)
+trainURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testURL <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainURL))
+testing <- read.csv(url(testURL))
+label <- createDataPartition(training$classe, p = 0.7, list = FALSE)
+train <- training[label, ]
+test <- training[-label, ]
+str(train)
+```
+
+### Data Cleaning
+The structure above shows that we probably have too many variables. Some variables have an excessive number of NAs and need to be excluded. Other variables lack variance and should be removed.
+
+```{r DataCleaning}
+NZV <- nearZeroVar(train)
+train <- train[ ,-NZV]
+test <- test[ ,-NZV]
+label <- apply(train, 2, function(x) mean(is.na(x))) > 0.95
+train <- train[, -which(label, label == FALSE)]
+test <- test[, -which(label, label == FALSE)]
+train <- train[ , -(1:5)]
+test <- test[ , -(1:5)]
+```
+
+We started with 160 variables and have reduced those to only 54.
+
+## Exploratory Analysis
+
+The correlation plot below will begin to show us relationships in the data. 
+
+```{r CorrelationPlot, fig.width=12, fig.height=8}
+library(corrplot)
+corrMat <- cor(train[,-54])
+corrplot(corrMat, method = "color", type = "lower", tl.cex = 0.8, tl.col = rgb(0,0,0))
+```
+
+Darker color indicates a stronger relationship; red=negative, blue=positive.
+
+## Prediction Models
+
+Of the available methods we will use Decision Tree, Random Forest and Generalized Boosted Model.
+
+
+### Decision Tree
+
+```{r DecisionTree, message = FALSE, warning = FALSE, fig.width=18, fig.height=10}
+library(rpart)
+library(rpart.plot)
+library(rattle)
+set.seed(13908)
+modelDT <- rpart(classe ~ ., data = train, method = "class")
+fancyRpartPlot(modelDT)
+predictDT <- predict(modelDT, test, type = "class")
+confMatDT <- confusionMatrix(predictDT, test$classe)
+confMatDT
+```
+
+### Random Forest
+
+```{r RandomForest, message = FALSE}
+library(caret)
+set.seed(13908)
+control <- trainControl(method = "cv", number = 3, verboseIter=FALSE)
+modelRF <- train(classe ~ ., data = train, method = "rf", trControl = control)
+modelRF$finalModel
+predictRF <- predict(modelRF, test)
+confMatRF <- confusionMatrix(predictRF, test$classe)
+confMatRF
+```
+
+### Generalized Boosted Model
+
+```{r GBM, message = FALSE}
+library(caret)
+library(gbm)
+set.seed(13908)
+control <- trainControl(method = "repeatedcv", number = 5, repeats = 1, verboseIter = FALSE)
+modelGBM <- train(classe ~ ., data = train, trControl = control, method = "gbm", verbose = FALSE)
+modelGBM$finalModel
+predictGBM <- predict(modelGBM, test)
+confMatGBM <- confusionMatrix(predictGBM, test$classe)
+confMatGBM
+```
+
+Of the three methods used, the Random Forest Model gave the highest accuracy, 99.75%.
+
+## Predicting Test Set Output
+
+```{r TestSetPrediction, messages = FALSE}
+predictRF <- predict(modelRF, testing)
+predictRF
+```
